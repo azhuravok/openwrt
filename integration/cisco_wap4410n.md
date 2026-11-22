@@ -398,3 +398,4 @@ iperf3 server wired behind the AP (100 Mb/s), clients ~2 m away.
 - Image (2026-11-22): `files/etc/rc.local` sets the Wi-Fi queue limit;
   no `firewall4`/`nftables`; `hostapd-basic-wolfssl` instead of
   `wpad-basic-wolfssl` (no wpa_supplicant – AP mode only, 802.11r/k/v kept).
+- Later: Wi-Fi client/bridge mode – needs `wpad-basic-wolfssl` back in the seed (rebuild + flash, ~1 MB RAM) and WDS (4-address) on the remote AP or `relayd`.
