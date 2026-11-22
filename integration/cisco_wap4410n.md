@@ -112,27 +112,36 @@ ar7100> reset
 
 Settings are wiped; the image defaults apply (see "What you get after a reset" below).
 
-### B. From a running OpenWrt, streaming (keeps settings) – used 2026-11-22
+### B. From a running OpenWrt, streaming (keeps settings)
 
 `sysupgrade` does not work on this 32 MB board: it runs out of memory
 after "Commencing upgrade" and hangs (nothing written). Stream the image
-straight into flash instead, so it never sits in RAM:
+straight into flash instead, so it never sits in RAM. Simplest: let the AP
+pull it from any wired host with a web server (no SSH stream that a Wi-Fi
+hop could break):
 
 ```
+# on a wired host, in a directory with only the image
+python3 -m http.server 8088
 # on the AP
-sysupgrade -b /tmp/sysupgrade.tgz     # name MUST be sysupgrade.tgz
-wifi down; /etc/init.d/dnsmasq stop; sync; echo 3 > /proc/sys/vm/drop_caches
-# from the build host
-ssh root@AP "mtd -j /tmp/sysupgrade.tgz write - firmware" < sysupgrade.bin
-# verify (optional): compare up to the deadc0de marker, then reboot with
-# shell builtins only (the running rootfs has just been overwritten):
-ssh root@AP 'echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger'
+sysupgrade -b /tmp/sysupgrade.tgz        # name MUST be sysupgrade.tgz
+wget -qO- http://<host>:8088/sysupgrade.bin | md5sum   # compare with the build
+wifi down
+wget -qO- http://<host>:8088/sysupgrade.bin | mtd -j /tmp/sysupgrade.tgz write - firmware
+echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger
 ```
+Alternative, push from the build host:
+`ssh root@AP "mtd -j /tmp/sysupgrade.tgz write - firmware" < sysupgrade.bin`.
 
-Takes ~2 min. On 2026-11-22 the archive was named `cfg.tgz` and settings
-were *not* restored (first boot only looks for `sysupgrade.tgz`); they
-were put back with `sysupgrade -r`. Keep serial attached; method A is
-the fallback.
+- **Do not drop caches** (`echo 3 > /proc/sys/vm/drop_caches`) before
+  writing: the running rootfs gets overwritten, and with an empty cache
+  even the shell for the reboot command can no longer be loaded
+  (2026-11-22: had to power-cycle; harmless, the image was complete).
+  Keep the reboot in the same shell session, or power-cycle.
+- Takes ~2 min. Settings come back from `sysupgrade.tgz`; the
+  `uci-defaults` only touch factory defaults (see above), so e.g. the
+  channel is kept.
+- New SSH host keys appear only after a factory reset, not after a flash.
 
 ## Use case: add the AP to your network
 
@@ -217,7 +226,7 @@ wifi reload
 
 ### 5. Low-memory settings (this board has 32 MB)
 
-Recommended on every install (until they are in the image):
+Already part of this image (`files/etc/rc.local`, no firewall package); for other builds:
 ```
 # limit the Wi-Fi queue to 1 MB (default 4 MB OOM-kills hostapd under load)
 sed -i '/^exit 0/i echo fq_memory_limit 1048576 > /sys/kernel/debug/ieee80211/phy0/aqm' /etc/rc.local
@@ -251,6 +260,21 @@ Settings made with `uci` are lost on reset. To keep them, put the same `uci`
 lines into the image (`files/etc/uci-defaults/98-local-private` for anything
 with a password, `99-local` for the rest), rebuild, flash – then a reset brings
 the AP straight back into your network (that is how "my build" in step 1 works).
+
+## Recovery without serial console (tested 2026-11-22)
+
+The UART is not needed for normal operation or recovery:
+
+| situation | what to do |
+|---|---|
+| config broken, but the AP boots | **factory reset**: hold reset > 5 s while running (or `firstboot -y && reboot`). Comes back on DHCP with the image's Wi-Fi/SSH settings (my build). Tested |
+| where is the AP? | router's DHCP list: hostname `OpenWrt`, MAC `1c:df:0f:0c:99:06`. Best: a DHCP reservation for that MAC on the router, then the address never changes |
+| cannot log in / network config unusable | **failsafe**: power-cycle; when the power LED blinks fast (~10–15 s after power-on) press reset briefly. The AP is then `192.168.1.1` on the Ethernet port (PC: 192.168.1.2/24, direct cable); settings are not mounted. Log in with `ssh root@192.168.1.1` – my build: SSH key or the image's root password (both are in the image); stock OpenWrt: no password. Then e.g. `firstboot -y; reboot -f`, or `mount_root` to edit the config. Tested |
+| firmware broken (does not boot) | only then serial: U-Boot TFTP (method A) |
+
+Reset button while running (`/etc/rc.button/reset`): < 1 s = reboot;
+held ≥ 5 s = factory reset – the power LED starts blinking fast at 5 s,
+then release; 1–4 s = nothing.
 
 ## Configuring with `uci`
 
