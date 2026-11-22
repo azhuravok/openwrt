@@ -679,6 +679,20 @@ define Device/buffalo_wzr-hp-g450h
 endef
 TARGET_DEVICES += buffalo_wzr-hp-g450h
 
+define Device/cisco_wap4410n
+  DEVICE_VENDOR := Cisco
+  DEVICE_MODEL := WAP4410N
+  DEVICE_DTS := ar9132_cisco_wap4410n
+  DEVICE_PACKAGES := kmod-ath9k
+  KERNEL_SIZE := 3584k
+  IMAGE_SIZE := 7744k
+  IMAGES := sysupgrade.bin
+  KERNEL_COMPRESSION := gzip
+  KERNEL := kernel-bin | append-dtb | gzip | uImage gzip
+  IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | append-metadata | check-size
+endef
+TARGET_DEVICES += cisco_wap4410n
+
 define Device/comfast_cf-e110n-v2
   SOC := qca9533
   DEVICE_VENDOR := COMFAST
