@@ -1,0 +1,9 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+# Limit the mac80211 Wi-Fi queue to 1 MB (default 4 MB): under wired->Wi-Fi
+# load the default queue drove this 32 MB board out of memory and hostapd
+# was OOM-killed. 2 MB gave no extra throughput. See integration/cisco_wap4410n.md.
+echo fq_memory_limit 1048576 > /sys/kernel/debug/ieee80211/phy0/aqm
+
+exit 0

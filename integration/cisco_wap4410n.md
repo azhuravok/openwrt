@@ -219,6 +219,8 @@ and the LAN zone accepts everything anyway, so nothing is lost – but nftables,
 conntrack and ~15 modules cost ~1 MB of the 32 MB RAM. This is the usual
 OpenWrt "dumb AP" setup. You *would* need it for a guest Wi-Fi isolated from
 the LAN, or if the AP routes – then keep/reinstall `firewall4`.
+(A guest Wi-Fi is also possible without it: second SSID bridged to a VLAN,
+e.g. `eth0.20`, with the main router doing DHCP and isolation.)
 
 ### 6. Check
 
@@ -355,7 +357,6 @@ iperf3 server wired behind the AP (100 Mb/s), clients ~2 m away.
 - Memory is tight (~24 MB usable). Unused `kmod-ppp`, `kmod-pppoe`,
   `kmod-switch-rtl8366rb` removed from the seed (2026-11-22).
   Candidate if still short: `zram-swap`.
-- TODO image: `files/etc/rc.local` with the Wi-Fi queue limit; drop
-  `firewall4`/`nftables`/`kmod-nft-*`; `wpad-basic-wolfssl` →
-  `hostapd-basic-wolfssl` (no wpa_supplicant, ~1 MB); channel 1 in
-  `98-local-private`.
+- Image (2026-11-22): `files/etc/rc.local` sets the Wi-Fi queue limit;
+  no `firewall4`/`nftables`; `hostapd-basic-wolfssl` instead of
+  `wpad-basic-wolfssl` (no wpa_supplicant – AP mode only, 802.11r/k/v kept).
