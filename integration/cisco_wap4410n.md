@@ -212,6 +212,14 @@ echo fq_memory_limit 1048576 > /sys/kernel/debug/ieee80211/phy0/aqm
 /etc/init.d/firewall disable; /etc/init.d/firewall stop
 ```
 
+Why no firewall on this AP: it only bridges Wi-Fi to the LAN (layer 2) –
+the firewall filters routed traffic, and without `br_netfilter` (not in this
+build) it never sees Wi-Fi↔LAN frames. The AP has no WAN, no routing, no NAT,
+and the LAN zone accepts everything anyway, so nothing is lost – but nftables,
+conntrack and ~15 modules cost ~1 MB of the 32 MB RAM. This is the usual
+OpenWrt "dumb AP" setup. You *would* need it for a guest Wi-Fi isolated from
+the LAN, or if the AP routes – then keep/reinstall `firewall4`.
+
 ### 6. Check
 
 ```
