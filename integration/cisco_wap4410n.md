@@ -87,6 +87,12 @@ make -j$(nproc)
 on DHCP with the same Wi-Fi and SSH access – no serial needed
 (tested 2026-11-22 with `firstboot -y`).
 
+They also run once after *every* flash, after the kept settings
+(`sysupgrade.tgz`) were restored. So both scripts only replace factory
+defaults (`99-local`: LAN still static 192.168.1.1; `98-local-private`:
+SSID still `OpenWrt`) and leave a restored or hand-made config alone –
+otherwise each flash would reset e.g. the Wi-Fi channel to the image value.
+
 Permissions under `files/` are copied into the image as they are on
 disk, and git does not track them (only the exec bit). Keep directories
 `755`, `files/etc/dropbear` `700`, `authorized_keys` `600` – with a
@@ -172,6 +178,14 @@ Move the cable to your LAN, find the new address in the router's DHCP list.
 passwd
 ```
 (or put your public key in `/etc/dropbear/authorized_keys`)
+
+Once key login works, password logins can be switched off (removes the whole
+class of password attacks; keep the serial console as fallback):
+```
+uci set dropbear.@dropbear[0].PasswordAuth=off
+uci set dropbear.@dropbear[0].RootPasswordAuth=off
+uci commit dropbear; /etc/init.d/dropbear restart
+```
 
 ### 4. Your Wi-Fi: name, password, country
 
