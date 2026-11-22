@@ -104,7 +104,7 @@ ar7100> cp.b 0x80060000 0xbf050000 $filesize
 ar7100> reset
 ```
 
-Comes up with the image defaults (static 192.168.1.254).
+Settings are wiped; the image defaults apply (see "What you get after a reset" below).
 
 ### B. From a running OpenWrt, streaming (keeps settings) – used 2026-11-22
 
@@ -128,6 +128,106 @@ were *not* restored (first boot only looks for `sysupgrade.tgz`); they
 were put back with `sysupgrade -r`. Keep serial attached; method A is
 the fallback.
 
+## Use case: add the AP to your network
+
+The AP only *extends* an existing network: your router keeps doing DHCP,
+DNS and internet; the WAP4410N bridges Wi-Fi to its Ethernet port.
+
+```
+ [router 192.168.10.1, DHCP] ──cable── [WAP4410N, DHCP client] ))) Wi-Fi clients
+```
+
+### 1. What you get after a reset
+
+Reset = hold the reset button > 5 s, or `firstboot -y && reboot`.
+`uci-defaults` scripts run again on the next boot.
+
+| image | LAN | Wi-Fi | how to log in |
+|---|---|---|---|
+| **public build** (`wap4410n/local`, no private files) | DHCP client (`99-local`), no DHCP server | **off** (OpenWrt default) | find the AP's address in your router's DHCP list (hostname `OpenWrt`), `ssh root@<ip>` – no password yet |
+| **my build** (+ private overlay) | DHCP client | `OpenWrt-e`, my key, country/channel from `98-local-private` | `ssh root@<ip>` with my key – nothing to do, it rejoins by itself |
+| **stock OpenWrt image** / U-Boot TFTP flash without `files/` | static `192.168.1.1`, DHCP server **on** | off | cable directly to a PC, `ssh root@192.168.1.1` |
+
+> Never plug an AP with its DHCP server on into your LAN – two DHCP servers
+> fight. Do step 2 on a direct cable first.
+
+### 2. Join the LAN (only if it is still static 192.168.1.1)
+
+```
+uci batch <<'EOF'
+set network.lan.proto='dhcp'
+delete network.lan.ipaddr
+delete network.lan.netmask
+delete network.lan.ip6assign
+EOF
+uci commit network
+/etc/init.d/dnsmasq disable; /etc/init.d/dnsmasq stop
+reload_config          # the SSH session drops – the AP now asks your router for an address
+```
+Move the cable to your LAN, find the new address in the router's DHCP list.
+
+### 3. Set a root password (public build / stock image)
+
+```
+passwd
+```
+(or put your public key in `/etc/dropbear/authorized_keys`)
+
+### 4. Your Wi-Fi: name, password, country
+
+```
+uci batch <<'EOF'
+set wireless.radio0.country='UA'
+set wireless.radio0.channel='1'
+set wireless.radio0.htmode='HT20'
+set wireless.radio0.txpower='15'
+set wireless.radio0.disabled='0'
+set wireless.default_radio0.network='lan'
+set wireless.default_radio0.mode='ap'
+set wireless.default_radio0.ssid='<your SSID>'
+set wireless.default_radio0.encryption='psk2'
+set wireless.default_radio0.key='<your password, 8-63 chars>'
+EOF
+uci commit wireless
+wifi reload
+```
+
+- **Same SSID + password as your router** → clients roam between router and AP.
+  **Different SSID** (e.g. `OpenWrt-e`) → you choose which one a device uses
+  (better for testing).
+- **Channel**: pick one of 1 / 6 / 11 that your other APs do *not* use
+  (`iw dev phy0-ap0 scan ap-force | grep -E "freq|signal|SSID"`). Avoid channels
+  12–13 – many phones don't see them. Channel = (MHz − 2407) / 5.
+- **HT20** is the safe default. HT40 doubles the speed for 2-stream clients but
+  overlaps neighbours and needs `noscan '1'` – see the performance notes.
+
+### 5. Low-memory settings (this board has 32 MB)
+
+Recommended on every install (until they are in the image):
+```
+# limit the Wi-Fi queue to 1 MB (default 4 MB OOM-kills hostapd under load)
+sed -i '/^exit 0/i echo fq_memory_limit 1048576 > /sys/kernel/debug/ieee80211/phy0/aqm' /etc/rc.local
+echo fq_memory_limit 1048576 > /sys/kernel/debug/ieee80211/phy0/aqm
+# firewall: not needed on a bridged AP
+/etc/init.d/firewall disable; /etc/init.d/firewall stop
+```
+
+### 6. Check
+
+```
+ip -4 addr show br-lan               # address from your router
+iw dev phy0-ap0 info                 # ssid, channel, width, txpower
+iw dev phy0-ap0 station dump | grep -E "Station|signal|bitrate"   # clients
+free; logread | grep -i oom          # memory
+```
+
+### 7. Make it survive a reset
+
+Settings made with `uci` are lost on reset. To keep them, put the same `uci`
+lines into the image (`files/etc/uci-defaults/98-local-private` for anything
+with a password, `99-local` for the rest), rebuild, flash – then a reset brings
+the AP straight back into your network (that is how "my build" in step 1 works).
+
 ## Configuring with `uci`
 
 OpenWrt keeps its settings in `/etc/config/*` and edits them with
@@ -149,7 +249,7 @@ config device               option name 'br-lan'; option type 'bridge'; list por
 config interface 'lan'      option device 'br-lan'; option proto 'dhcp'
 
 # wireless
-config wifi-device 'radio0' option band '2g'; option channel 'auto'; option htmode 'HT20'
+config wifi-device 'radio0' option band '2g'; option channel '1'; option htmode 'HT20'
                             option country 'UA'; option txpower '15'
 config wifi-iface 'default_radio0'
                             option network 'lan'; option mode 'ap'; option ssid 'OpenWrt-e'
@@ -157,6 +257,7 @@ config wifi-iface 'default_radio0'
 
 # system: hostname OpenWrt, timezone UTC, NTP *.openwrt.pool.ntp.org
 # dhcp: dnsmasq installed but disabled by 99-local (the router serves DHCP)
+# firewall: disabled (bridged AP); /etc/rc.local: Wi-Fi queue limit, see below
 ```
 
 ### Examples
@@ -209,6 +310,32 @@ To bake any of these into the image, put the lines (without the shell
 prompt) into `files/etc/uci-defaults/99-local` before `exit 0`, keep
 `uci commit <config>` at the end, rebuild and flash.
 
+## Wi-Fi performance and memory (tested 2026-11-22)
+
+iperf3 server wired behind the AP (100 Mb/s), clients ~2 m away.
+
+| client / setting | down | up |
+|---|---|---|
+| phone, 1 stream (MCS 7, 65 Mb/s link), any channel | ~25 | ~25 |
+| laptop 2x2, channel 11 shared with a strong AP | ~47 | ~44 |
+| laptop 2x2, channel 1 (clean), HT20 | **~55** | **~59** |
+| laptop 2x2, channel 1, HT40 forced (`noscan`) | 77 | 88 |
+
+- HT40 reaches the 100 Mb/s Ethernet limit and nearly saturates the CPU
+  (softirq ~70%). Not kept: on 2.4 GHz it overlaps neighbours; hostapd
+  refuses it unless `noscan '1'`.
+- txpower 15 → 20 dBm: no gain at short range.
+- What helped most: antenna position and a channel with no strong AP on it
+  (1 / 6 / 11 plan with the other APs).
+- **Memory:** under wired→Wi-Fi load the default mac80211 queue (4 MB)
+  OOM-killed hostapd (May and 2026-11-22). Fix: limit it in `/etc/rc.local`
+  (`echo fq_memory_limit 1048576 > /sys/kernel/debug/ieee80211/phy0/aqm`) –
+  no throughput loss. Disabling the firewall (not used by a bridged AP)
+  gave ~1 MB; after that `wifi reload` takes 5 s instead of minutes/OOM.
+- Roaming: `wpad-basic` already has 802.11r/k/v – no extra package.
+- After a channel change, clients may silently move to another saved
+  network and stay there – check before measuring.
+
 ## Notes / TODO
 
 - MAC address: read from the Sercomm node-info block (flash `0x3ff70`,
@@ -220,5 +347,7 @@ prompt) into `files/etc/uci-defaults/99-local` before `exit 0`, keep
 - Memory is tight (~24 MB usable). Unused `kmod-ppp`, `kmod-pppoe`,
   `kmod-switch-rtl8366rb` removed from the seed (2026-11-22).
   Candidate if still short: `zram-swap`.
-- Planned: Wi-Fi performance testing (iperf3 is in the image). A similar
-  old TP-Link gained throughput after tuning – try here too.
+- TODO image: `files/etc/rc.local` with the Wi-Fi queue limit; drop
+  `firewall4`/`nftables`/`kmod-nft-*`; `wpad-basic-wolfssl` →
+  `hostapd-basic-wolfssl` (no wpa_supplicant, ~1 MB); channel 1 in
+  `98-local-private`.
