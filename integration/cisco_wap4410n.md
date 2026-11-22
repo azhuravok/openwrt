@@ -128,6 +128,87 @@ were *not* restored (first boot only looks for `sysupgrade.tgz`); they
 were put back with `sysupgrade -r`. Keep serial attached; method A is
 the fallback.
 
+## Configuring with `uci`
+
+OpenWrt keeps its settings in `/etc/config/*` and edits them with
+`uci`. Two ways to change something:
+
+| Goal | How | Survives factory reset? |
+|---|---|---|
+| change this running AP now | `uci set …; uci commit …; reload_config` over SSH | no – lost on `firstboot` / reset button |
+| make it part of my image | add the same `uci` lines to `files/etc/uci-defaults/99-local` (or `98-local-private` for secrets), rebuild, flash | yes – runs on every first boot |
+
+Useful: `uci show network` (read), `uci changes` (pending), `uci revert network` (undo uncommitted),
+`uci export network` (whole file).
+
+### Current config (2026-11-22, secrets removed)
+
+```
+# network: one bridge, LAN by DHCP from the home router
+config device               option name 'br-lan'; option type 'bridge'; list ports 'eth0'
+config interface 'lan'      option device 'br-lan'; option proto 'dhcp'
+
+# wireless
+config wifi-device 'radio0' option band '2g'; option channel 'auto'; option htmode 'HT20'
+                            option country 'UA'; option txpower '15'
+config wifi-iface 'default_radio0'
+                            option network 'lan'; option mode 'ap'; option ssid 'OpenWrt-e'
+                            option encryption 'psk2'; option key '<98-local-private>'
+
+# system: hostname OpenWrt, timezone UTC, NTP *.openwrt.pool.ntp.org
+# dhcp: dnsmasq installed but disabled by 99-local (the router serves DHCP)
+```
+
+### Examples
+
+Static IP instead of DHCP:
+```
+uci batch <<'EOF'
+set network.lan.proto='static'
+set network.lan.ipaddr='192.168.10.5'
+set network.lan.netmask='255.255.255.0'
+set network.lan.gateway='192.168.10.1'
+add_list network.lan.dns='192.168.10.1'
+EOF
+uci commit network
+```
+(back to DHCP: `uci set network.lan.proto='dhcp'; uci delete network.lan.ipaddr; uci delete network.lan.netmask; uci delete network.lan.gateway; uci delete network.lan.dns; uci commit network`)
+
+Static route:
+```
+uci add network route
+uci set network.@route[-1].interface='lan'
+uci set network.@route[-1].target='192.168.32.0/24'
+uci set network.@route[-1].gateway='192.168.10.1'
+uci commit network
+```
+
+Hostname, timezone, own NTP server:
+```
+uci set system.@system[0].hostname='wap4410n'
+uci set system.@system[0].zonename='Europe/Kyiv'
+uci set system.@system[0].timezone='EET-2EEST,M3.5.0/3,M10.5.0/4'
+uci delete system.ntp.server
+uci add_list system.ntp.server='192.168.10.1'
+uci commit system
+```
+
+Wi-Fi channel / power (for performance tests):
+```
+uci set wireless.radio0.channel='6'
+uci set wireless.radio0.htmode='HT40'
+uci set wireless.radio0.txpower='18'
+uci commit wireless; wifi reload
+```
+
+Apply after `uci commit`: `reload_config` (or `/etc/init.d/network restart`,
+`wifi reload`). Over SSH, changing the LAN address drops the session –
+keep serial attached or reconnect to the new address.
+
+To bake any of these into the image, put the lines (without the shell
+prompt) into `files/etc/uci-defaults/99-local` before `exit 0`, keep
+`uci commit <config>` at the end, rebuild and flash.
+
 ## Notes / TODO
 
 - MAC address: read from the Sercomm node-info block (flash `0x3ff70`,
