@@ -1,0 +1,19 @@
+#!/bin/sh
+
+echo "Switching lan interface to DHCP..."
+
+# 1. Kill dnsmasq service completely
+/etc/init.d/dnsmasq stop
+/etc/init.d/dnsmasq disable
+
+# 2. Reconfigure network interface
+uci set network.lan.proto='dhcp'
+uci del network.lan.ipaddr
+uci del network.lan.netmask
+uci del network.lan.gateway
+uci commit network
+
+# 3. Apply networking rules
+/etc/init.d/network restart &
+
+echo "Done. DHCP client mode is active."

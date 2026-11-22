@@ -1,0 +1,19 @@
+#!/bin/sh
+
+echo "Switching lan interface to Static IP (192.168.1.254)..."
+
+# 1. Reconfigure network interface
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr='192.168.1.254'
+uci set network.lan.netmask='255.255.255.0'
+uci set network.lan.gateway='192.168.1.1'
+uci commit network
+
+# 2. Re-enable and start dnsmasq service
+/etc/init.d/dnsmasq enable
+/etc/init.d/dnsmasq start
+
+# 3. Apply networking rules
+/etc/init.d/network restart &
+
+echo "Done. Static IP restored."
