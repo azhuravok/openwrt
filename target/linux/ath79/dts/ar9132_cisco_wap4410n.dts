@@ -1,144 +1,141 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
 #include "ar9132.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 
 / {
-    compatible = "cisco,wap4410n", "qca,ar9132";
-    model = "Cisco WAP4410N";
+	compatible = "cisco,wap4410n", "qca,ar9132";
+	model = "Cisco WAP4410N";
 
-    chosen {
-        bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio32,0x18020000 rootfstype=squashfs";
-        stdout-path = "serial0:115200n8";
-    };
+	chosen {
+		bootargs = "console=ttyS0,115200";
+	};
 
-    aliases {
-        serial0 = &uart;
-        label-mac-device = &eth0;
-    };
+	aliases {
+		label-mac-device = &eth0;
+		led-boot = &led_power;
+		led-failsafe = &led_power;
+		led-running = &led_power;
+		led-upgrade = &led_power;
+	};
 
-    memory@0 {
-        device_type = "memory";
-        reg = <0x0 0x2000000>;
-    };
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x2000000>;
+	};
 
-    gpio-keys {
-        compatible = "gpio-keys";
-        reset {
-            label = "reset";
-            gpios = <&gpio 21 GPIO_ACTIVE_LOW>;
-            linux,code = <KEY_RESTART>;
-        };
-    };
+	keys {
+		compatible = "gpio-keys";
 
-    leds {
-        compatible = "gpio-leds";
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&gpio 21 GPIO_ACTIVE_LOW>;
+			debounce-interval = <60>;
+		};
+	};
 
-        wlan {
-            label = "green:wlan";
-            gpios = <&gpio 0 GPIO_ACTIVE_HIGH>;
-            linux,default-trigger = "phy0radio";
-        };
+	leds {
+		compatible = "gpio-leds";
 
-        power {
-            label = "green:power";
-            gpios = <&gpio 1 GPIO_ACTIVE_LOW>; 
-            default-state = "on";
-        };
-    };
+		led_power: power {
+			label = "green:power";
+			gpios = <&gpio 1 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
 
-    flash@1f000000 {
-        compatible = "cfi-flash";
-        reg = <0x1f000000 0x800000>;
-        bank-width = <2>;
-        device-width = <1>;
+		wlan {
+			label = "green:wlan";
+			gpios = <&gpio 0 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "phy0radio";
+		};
+	};
 
-        partitions {
-            compatible = "fixed-partitions";
-            #address-cells = <1>;
-            #size-cells = <1>;
+	flash@1f000000 {
+		compatible = "cfi-flash";
+		reg = <0x1f000000 0x800000>;
+		bank-width = <2>;
+		device-width = <1>;
 
-            /* U-Boot: 0x000000 - 0x040000 (256k) */
-            partition@0 {
-                label = "u-boot";
-                reg = <0x000000 0x040000>;
-                read-only;
-            };
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
 
-            /* Env: 0x040000 - 0x050000 (64k) */
-            u_boot_env:partition@40000 {
-                label = "u-boot-env";
-                reg = <0x040000 0x010000>;
-                read-only;
+			/*
+			 * The stock (Sercomm) U-Boot refuses to boot unless
+			 * 0x7dfff8 holds "eRcOmM". This layout overwrites it, so
+			 * the instruction at u-boot offset 0x19e08 must be
+			 * patched to a nop first (see the 2015 ar71xx port).
+			 */
+			uboot: partition@0 {
+				label = "u-boot";
+				reg = <0x000000 0x040000>;
+				read-only;
+			};
 
-                compatible = "u-boot,env";
-            };
+			partition@40000 {
+				label = "u-boot-env";
+				reg = <0x040000 0x010000>;
+				read-only;
+			};
 
-            /* Unified Firmware: 0x050000 - 0x7E0000 (~7.5MB) */
-            /* This contains [Kernel + SquashFS + JFFS2 Overlay] */
-            partition@50000 {
-                label = "firmware";
-                reg = <0x050000 0x790000>;
-                compatible = "denx,uimage";
-            };
+			partition@50000 {
+				compatible = "denx,uimage";
+				label = "firmware";
+				reg = <0x050000 0x790000>;
+			};
 
-            /* Legacy NVRAM: 0x7E0000 - 0x7F0000 (64k) */
-            partition@7e0000 {
-                label = "nvram";
-                reg = <0x7e0000 0x010000>;
+			partition@7e0000 {
+				label = "nvram";
+				reg = <0x7e0000 0x010000>;
+				read-only;
+			};
 
-                nvmem-layout {
-                    compatible = "fixed-layout";
-                    #address-cells = <1>;
-                    #size-cells = <1>;
-
-                    macaddr_env_153: macaddr@153 {
-                        reg = <0x153 0x11>; /* 17 bytes for a string MAC */
-                    };
-                };
-
-            };
-
-            /* ART: 0x7F0000 - 0x800000 (64k) */
-            art: partition@7f0000 {
-                label = "art";
-                reg = <0x7f0000 0x010000>;
-                read-only;
-            };
-        };
-    };
+			art: partition@7f0000 {
+				label = "art";
+				reg = <0x7f0000 0x010000>;
+				read-only;
+			};
+		};
+	};
 };
 
-&eth0 {
-    status = "okay";
-    phy-mode = "rgmii";
-    phy-handle = <&phy0>;
-};
+&uboot {
+	compatible = "nvmem-cells";
+	#address-cells = <1>;
+	#size-cells = <1>;
 
-&wmac {
-    status = "okay";
-    mtd-cal-data = <&art 0x1000>;
-
-    qca,tx-chainmask = <7>;
-    qca,rx-chainmask = <7>;
-    qca,ant-ctrl-common = <0x00000007>;
-
-    qca,ignore-eeprom-regdomain;
+	/* Sercomm node-info block at 0x3ff70, MAC at +0x30 */
+	macaddr_uboot_3ffa0: macaddr@3ffa0 {
+		reg = <0x3ffa0 0x6>;
+	};
 };
 
 &mdio0 {
-    status = "okay";
+	status = "okay";
 
-    phy0: ethernet-phy@0 {
-        reg = <0>;
-    };
+	phy0: ethernet-phy@0 {
+		reg = <0>;
+	};
 };
 
-&u_boot_env {
-    compatible = "u-boot,env-layout";
-    #address-cells = <1>;
-    #size-cells = <1>;
+&eth0 {
+	status = "okay";
 
-    ethaddr_env: ethaddr {
-    };
+	nvmem-cells = <&macaddr_uboot_3ffa0>;
+	nvmem-cell-names = "mac-address";
+
+	phy-mode = "rgmii";
+	phy-handle = <&phy0>;
+};
+
+&wmac {
+	status = "okay";
+
+	mtd-cal-data = <&art 0x1000>;
+	nvmem-cells = <&macaddr_uboot_3ffa0>;
+	nvmem-cell-names = "mac-address";
 };
