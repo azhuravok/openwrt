@@ -84,7 +84,13 @@ make -j$(nproc)
 
 `uci-defaults` scripts run once on first boot. So after a factory reset
 (reset button held > 5 s, or `firstboot -y && reboot`) the AP comes back
-on DHCP with the same Wi-Fi and SSH access – no serial needed.
+on DHCP with the same Wi-Fi and SSH access – no serial needed
+(tested 2026-11-22 with `firstboot -y`).
+
+Permissions under `files/` are copied into the image as they are on
+disk, and git does not track them (only the exec bit). Keep directories
+`755`, `files/etc/dropbear` `700`, `authorized_keys` `600` – with a
+group-writable `/etc/dropbear` dropbear refuses all keys.
 
 ## Flashing
 
