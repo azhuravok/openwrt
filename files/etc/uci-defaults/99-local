@@ -1,0 +1,13 @@
+#!/bin/sh
+# Personal defaults for this WAP4410N, applied once on first boot
+# (after flashing without keeping settings, or after a factory reset).
+# The AP sits on an existing LAN: get the address by DHCP, serve no DHCP.
+uci -q batch <<"UCI"
+set network.lan.proto="dhcp"
+delete network.lan.ipaddr
+delete network.lan.netmask
+delete network.lan.ip6assign
+UCI
+uci commit network
+/etc/init.d/dnsmasq disable
+exit 0

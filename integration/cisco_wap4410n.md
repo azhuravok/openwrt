@@ -73,9 +73,18 @@ make -j$(nproc)
 # -> bin/targets/ath79/generic/openwrt-ath79-generic-cisco_wap4410n-squashfs-sysupgrade.bin
 ```
 
-Private overlay files (`files/etc/shadow`, `files/etc/config/wireless`)
-are deliberately not in git (`/files` is in `.gitignore`); provide them
-locally before building.
+## Settings: what goes where
+
+| Layer | Where | Content |
+|---|---|---|
+| device support (`wap4410n/device`, upstream candidate) | DTS, `image/generic.mk`, `board.d/02_network` | hardware only: flash map, MAC location, LEDs, button, LAN on eth0 |
+| personal build (`wap4410n/local`, this branch) | `integration/cisco_wap4410n.config`, `config-5.15` trims | package selection, low-memory kernel (SLOB) |
+| personal defaults, in git | `files/etc/uci-defaults/99-local` | LAN by DHCP, no DHCP server (AP on an existing LAN) |
+| private, **not in git** | `files/etc/shadow`, `files/etc/uci-defaults/98-local-private` (Wi-Fi SSID/key/country), `files/etc/dropbear/authorized_keys` | secrets; `/files` is in `.gitignore`, keep a copy elsewhere |
+
+`uci-defaults` scripts run once on first boot. So after a factory reset
+(reset button held > 5 s, or `firstboot -y && reboot`) the AP comes back
+on DHCP with the same Wi-Fi and SSH access – no serial needed.
 
 ## Flashing
 
@@ -113,14 +122,16 @@ were *not* restored (first boot only looks for `sysupgrade.tgz`); they
 were put back with `sysupgrade -r`. Keep serial attached; method A is
 the fallback.
 
-## Known issues / TODO
+## Notes / TODO
 
-- eth0 MAC is not read from flash ("invalid MAC address"); it is set in
-  `files/etc/config/network`. The 2015 patch reads it from the Sercomm
-  node-info at flash `0x3ff70` (u-boot offset 0x40000-0x90).
-- `target/linux/ath79/config-5.15` is edited for all of ath79 (SLOB,
-  no SPI-NOR/SWCONFIG/USB) – must move out of the shared target config.
-- `kmod-switch-rtl8366rb`, `kmod-ppp`, `kmod-pppoe` are in the seed but
-  unused on this board.
-- Memory is tight (~24 MB usable); hostapd/wpa_supplicant got OOM-killed
-  in May.
+- MAC address: read from the Sercomm node-info block (flash `0x3ff70`,
+  MAC at `0x3ffa0`), same for eth0 and Wi-Fi, as in the 2015 port.
+- SLOB (in `config-5.15`, affects all ath79 in this tree): needed here –
+  with SLUB the AP was OOM-rebooting in May. Kept in this branch because
+  OpenWrt has no per-device kernel options. SLOB is removed in Linux 6.4+,
+  so on 24.10 (6.6) / main (6.12) use `CONFIG_SLUB_TINY` instead.
+- Memory is tight (~24 MB usable). Unused `kmod-ppp`, `kmod-pppoe`,
+  `kmod-switch-rtl8366rb` removed from the seed (2026-11-22).
+  Candidate if still short: `zram-swap`.
+- Planned: Wi-Fi performance testing (iperf3 is in the image). A similar
+  old TP-Link gained throughput after tuning – try here too.
