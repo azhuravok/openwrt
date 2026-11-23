@@ -95,7 +95,7 @@ otherwise each flash would reset e.g. the Wi-Fi channel to the image value.
 
 Permissions under `files/` are copied into the image as they are on
 disk, and git does not track them (only the exec bit). Keep directories
-`755`, `files/etc/dropbear` `700`, `authorized_keys` `600` – with a
+`755`, `files/etc/dropbear` `700`, `authorized_keys` and `etc/shadow` `600` – with a
 group-writable `/etc/dropbear` dropbear refuses all keys.
 
 ## Flashing
