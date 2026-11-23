@@ -392,6 +392,16 @@ iperf3 server wired behind the AP (100 Mb/s), clients ~2 m away.
   with SLUB the AP was OOM-rebooting in May. Kept in this branch because
   OpenWrt has no per-device kernel options. SLOB is removed in Linux 6.4+,
   so on 24.10 (6.6) / main (6.12) use `CONFIG_SLUB_TINY` instead.
+- **25.12 does not fit (tried 2026-11-23, v25.12.6, kernel 6.12, SLUB_TINY):**
+  kernel 3.99 MB gzip > `KERNEL_SIZE` 3584k (23.05: 3.26 MB); kernel code
+  +1.2 MB, which stays in RAM – the ~9 MB free of 23.05 would shrink.
+  So this board stays on 23.05 (EOL: keep SSH LAN-only, no password logins,
+  no port forwards). No upstream PR: new devices go only to main, which is
+  bigger still. The converted DTS (`nvmem-layout` cells, needed for 6.x)
+  is kept locally on vaio, branches `wap4410n/device-25.12`, `wap4410n/local-25.12`.
+- Traffic limits (guest Wi-Fi, "only to host X"): do not filter on the AP.
+  Put those clients on a second SSID tagged into a VLAN on `eth0`, and filter
+  that VLAN on the router.
 - Memory is tight (~24 MB usable). Unused `kmod-ppp`, `kmod-pppoe`,
   `kmod-switch-rtl8366rb` removed from the seed (2026-11-22).
   Candidate if still short: `zram-swap`.
